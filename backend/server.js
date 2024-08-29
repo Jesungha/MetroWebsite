@@ -4,6 +4,8 @@ const cors = require('cors');
 const session = require('express-session');
 const db = require('./database/db');
 require('dotenv').config();
+const multer  = require('multer')
+const upload = multer({ dest: 'uploads/' })
 const app = express();
 const port = 3001;
 app.disable('x-powered-by');
@@ -159,4 +161,16 @@ app.get('/isLoggedIn', (req, res) => {
 );
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
+});
+
+
+app.get('/uploadFile', (req, res) => {
+  if (req.session.userId) {
+    // Fetch user-specific data from the database using req.session.userId
+    
+    console.log(req);
+  }
+  else {
+    res.status(401).send('Unauthorized: Please log in first');
+  }
 });

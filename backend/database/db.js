@@ -1,5 +1,6 @@
 // db.js
-var mysql = require('mysql');
+require('dotenv').config();
+var mysql = require('mysql2');
 
 var con = mysql.createConnection({
     host: process.env.MYSQL_HOST, // Replace with your MySQL host
