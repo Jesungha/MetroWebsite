@@ -1,13 +1,15 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
+const path = require('path');
 const session = require('express-session');
 const db = require('./database/db');
 require('dotenv').config();
 const multer  = require('multer')
-const upload = multer({ dest: 'uploads/' })
 const app = express();
 const port = 3001;
+const csv = require('csv');
+const fs = require('fs');
 app.disable('x-powered-by');
 app.use(cors({
   origin: 'http://localhost:3000', // Your frontend origin
@@ -29,8 +31,16 @@ app.use(session({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-//sessions
-
+/// MULTER SETUP
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+      cb(null, './uploads/');
+  },
+  filename: (req, file, cb) => {
+      cb(null, file.originalname);
+  }
+});
+const upload = multer({ storage });
 
 
 // Login endpoint
@@ -159,18 +169,60 @@ app.get('/isLoggedIn', (req, res) => {
   }
 }
 );
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+
+//get file endpoint
+app.post('/uploadFile', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded.' });
+  }
+  else{
+    let stream = fs.createReadStream(req.file.path);
+    let csvData = [];
+    let isFirstLine = true;
+    let csvStream = csv
+        .parse()
+        .on("data", function (data) {
+          if (isFirstLine) {
+            // Skip the first line (headers)
+            isFirstLine = false;
+            return;
+        }
+            csvData.push(data);
+        })
+        .on("end", function () {
+            // Remove Header ROW
+            csvData.shift();
+
+            // Open the MySQL connection
+            let query = 'INSERT INTO `users`.`sales_table` (`marketid`, `custno`, `company`, `item`, `itmdesc`, `serial`, `qty`, `price`, `minprice`, `cost`, `discount`, `realprice`, `taxable`, `taxamount`, `pptax`, `subtotal`, `profit`, `adduser`, `name`, `lastname`, `invno`, `adddate`, `custno1`, `acttype`, `arstat`, `paytype`, `prodline`, `category`, `subcategory`, `paymentsku`, `cashpaid`, `creditcardpaid`, `debitcardpaid`, `financedpaid`, `checkpaid`, `otherpaid`, `artraniid`, `armastiid`, `firstname`, `lastname1`, `tangible`, `serialized`, `stationid`, `manufacturer`, `color`, `state`, `region`, `principle`) VALUES ?';
+            db.query(query, [csvData], (error, response) => {
+                console.log(error || response);
+            });
+        
+          
+             
+            // delete file after saving to MySQL database
+            // -> you can comment the statement to see the uploaded CSV file.
+            fs.unlinkSync(req.file.path)
+        });
+    stream.pipe(csvStream);
+  
+    
+  }
+  res.status(200).json({
+    message: 'File uploaded successfully!',
+    file: req.file,
+  });
+
+
 });
 
 
-app.get('/uploadFile', (req, res) => {
-  if (req.session.userId) {
-    // Fetch user-specific data from the database using req.session.userId
-    
-    console.log(req);
-  }
-  else {
-    res.status(401).send('Unauthorized: Please log in first');
-  }
+
+
+// get itemdesc to get number, armastiid to identify identical customer, date for date, acttype for either activation or upgrade, 
+
+
+app.listen(port, () => {
+  console.log(`Server is running on http://localhost:${port}`);
 });
