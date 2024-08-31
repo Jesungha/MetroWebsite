@@ -5,11 +5,12 @@ const path = require('path');
 const session = require('express-session');
 const db = require('./database/db');
 require('dotenv').config();
-const multer  = require('multer')
+const multer = require('multer')
 const app = express();
 const port = 3001;
 const csv = require('csv');
 const fs = require('fs');
+const con = require('./database/db');
 app.disable('x-powered-by');
 app.use(cors({
   origin: 'http://localhost:3000', // Your frontend origin
@@ -34,10 +35,10 @@ app.use(express.urlencoded({ extended: true }));
 /// MULTER SETUP
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-      cb(null, './uploads/');
+    cb(null, './uploads/');
   },
   filename: (req, file, cb) => {
-      cb(null, file.originalname);
+    cb(null, file.originalname);
   }
 });
 const upload = multer({ storage });
@@ -49,19 +50,19 @@ app.post('/login', (req, res) => {
   console.log(`Received email: ${email}`); // Ensure sensitive info is not logged
   // Note: Avoid logging passwords or any sensitive information
   const sql = 'SELECT * FROM users WHERE email = ?';
-  
+
   db.query(sql, [email], (err, results) => {
     if (err) {
       console.error('Database query error:', err); // Log errors for debugging
       return res.status(500).json({ success: false, message: 'Internal server error.' });
-    } 
+    }
     if (results.length > 0) {
       const user = results[0];
       bcrypt.compare(pw, user.password, (err, result) => {
         if (err) {
           console.error('Password comparison error:', err); // Log errors for debugging
           return res.status(500).json({ success: false, message: 'Internal server error.' });
-        } 
+        }
         if (result) {
           req.session.loggedin = true;
           req.session.userId = user.id; // Set session data
@@ -175,47 +176,90 @@ app.post('/uploadFile', upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded.' });
   }
-  else{
+  else {
     let stream = fs.createReadStream(req.file.path);
     let csvData = [];
-    let isFirstLine = true;
+    let i = 0;
     let csvStream = csv
-        .parse()
-        .on("data", function (data) {
-          if (isFirstLine) {
-            // Skip the first line (headers)
-            isFirstLine = false;
-            return;
-        }
-            csvData.push(data);
-        })
-        .on("end", function () {
-            // Remove Header ROW
-            csvData.shift();
-
-            // Open the MySQL connection
-            let query = 'INSERT INTO `users`.`sales_table` (`marketid`, `custno`, `company`, `item`, `itmdesc`, `serial`, `qty`, `price`, `minprice`, `cost`, `discount`, `realprice`, `taxable`, `taxamount`, `pptax`, `subtotal`, `profit`, `adduser`, `name`, `lastname`, `invno`, `adddate`, `custno1`, `acttype`, `arstat`, `paytype`, `prodline`, `category`, `subcategory`, `paymentsku`, `cashpaid`, `creditcardpaid`, `debitcardpaid`, `financedpaid`, `checkpaid`, `otherpaid`, `artraniid`, `armastiid`, `firstname`, `lastname1`, `tangible`, `serialized`, `stationid`, `manufacturer`, `color`, `state`, `region`, `principle`) VALUES ?';
-            db.query(query, [csvData], (error, response) => {
-                console.log(error || response);
-            });
-        
-          
-             
-            // delete file after saving to MySQL database
-            // -> you can comment the statement to see the uploaded CSV file.
-            fs.unlinkSync(req.file.path)
+      .parse()
+      .on("data", function (data) {
+        csvData.push(data);
+      })
+      .on("end", function () {
+        // Remove Header ROW
+        csvData.shift();
+        // Open the MySQL connection
+        let query = 'INSERT INTO `users`.`dump_table` (`marketid`, `storeid`, `company`, `custid`, `invno`, `SERIAL`, `item`, `mobile`, `actdate`, `account`, `ported`, `portptn`, `reference`, `sim`, `reference1`, `custname`, `promoname`, `linetype`, `status`, `source`, `plantype`, `accounttype`, `term`, `prodline`, `itemdesc`, `username`, `acttype`, `plancode`, `plantype1`, `grouptype`, `plandesc`, `mrc`) VALUES ?';
+        db.query(query, [csvData], (error, response) => {
+          console.log(error || response);
         });
-    stream.pipe(csvStream);
-  
-    
-  }
-  res.status(200).json({
-    message: 'File uploaded successfully!',
-    file: req.file,
-  });
 
+
+
+        // delete file after saving to MySQL database
+        // -> you can comment the statement to see the uploaded CSV file.
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (err) {
+          console.error('Error deleting file:', err);
+          return res.status(500).json({ message: 'Error deleting the uploaded file.', error: err });
+        }
+      });
+
+    stream.pipe(csvStream);
+
+    try {
+      var update_customer = 'INSERT INTO customer_info(Date, PhoneNumber, PhoneName, acttype, Plan) SELECT d1.actdate as Date, d1.Mobile as PhoneNumber, IF(d1.itemdesc = "", "BYOD", d1.itemdesc) as PhoneName, d1.acttype, d1.plandesc as Plan FROM dump_table d1 JOIN dump_table d2 ON d1.id = (d2.id + 1)WHERE d1.Mobile != d2.Mobile;';
+      db.query(update_customer, function (err, result) {
+        if (err) {
+          console.error('Error updating customer_info:', err);
+          return res.status(500).json({ message: 'Error updating customer_info.', error: err });
+        }
+      });
+
+      // Then, delete all data from `dump_table`
+      var delete_dump_table = "DELETE FROM dump_table";
+      db.query(delete_dump_table, function (err, result) {
+        if (err) {
+          console.error('Error deleting dump_table:', err);
+          return res.status(500).json({ message: 'Error deleting dump_table.', error: err });
+        }
+      });
+
+      // If both queries succeed, send a success response
+      res.status(200).json({ message: 'Data transferred and dump table cleared successfully!' });
+    } catch (err) {
+      // Catch any errors and send a failure response
+      console.error('Error manipulating SQL:', err);
+      res.status(500).json({ message: 'Error manipulating SQL data.', error: err });
+    }
+  }
 
 });
+//get user by phoneNumber
+app.post('/getNumber', (req, res) => {
+  const sql = 'SELECT * FROM customer_info WHERE PhoneNumber = ?';
+  console.log("Phone Number received: ", req.body.phoneNumber);
+
+  db.query(sql, [req.body.phoneNumber], (err, results) => {
+    if (err) {
+      console.error('Error executing query', err);
+      return res.status(500).json({ success: false, error: err });
+    } else {
+      if (results.length > 0) {
+        return res.json({ success: true, data: results });
+      } else {
+        return res.json({ success: false, message: 'No matching records found' });
+      }
+    }
+  });
+  // Temporary response for testing without database interaction
+  res.json({ success: true, message: 'Phone number received successfully' });
+});
+
+
+
+
 
 
 
