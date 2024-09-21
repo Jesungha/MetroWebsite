@@ -84,7 +84,7 @@ app.post('/register', (req, res) => {
   console.log(`Received password: ${pw}`);
   console.log(`Received name: ${name}`);
   const sql1 = 'SELECT * FROM users WHERE email = ?';
-  const sql = 'INSERT INTO users (email, password, name) VALUES (?, ?, ?)';
+  const sql = 'INSERT INTO users (email, password, name, master) VALUES (?, ?, ?, 0)';
   db.query(sql1, [email], (err, results) => {
     if (err) {
       res.status
@@ -144,13 +144,13 @@ app.post('/logout', (req, res) => {
 app.get('/dashboard', (req, res) => {
   if (req.session.userId) {
     // Fetch user-specific data from the database using req.session.userId
-    const sql = 'SELECT name, email FROM users WHERE id = ?';
-    console.log(`User ID: ${req.session.userId}`);
+    const sql = 'SELECT name, email, master FROM users WHERE id = ?';
 
     db.query(sql, [req.session.userId], (err, results) => {
       if (err) {
         res.status(500).send(err);
       } else if (results.length > 0) {
+        console.log('User data:', results[0]);
         res.json({ success: true, user: results[0] });
       } else {
         res.status(404).send('User not found');
@@ -161,6 +161,25 @@ app.get('/dashboard', (req, res) => {
   }
 });
 
+//adminpreviliges
+app.get('/admin', (req, res) => {
+  if (req.session.userId) {
+    // Fetch user-specific data from the database using req.session.userId
+    const sql = 'SELECT email, name, master FROM users';
+    
+    db.query(sql, (err, results) => {
+      if (err) {
+        res.status(500).send(err);
+      } else if (results.length > 0) {
+        res.json({ success: true, user: results });
+      }
+      else {
+        res.status(404).send('No users found');
+      }
+    });
+
+  }
+});
 app.get('/isLoggedIn', (req, res) => {
   console.log(`User ID: ${req.session.userId}`);
   if (req.session.userId) {
@@ -240,7 +259,6 @@ app.post('/uploadFile', upload.single('file'), (req, res) => {
 app.post('/getNumber', (req, res) => {
   const sql = 'SELECT * FROM customer_info WHERE PhoneNumber = ?';
   console.log("Phone Number received: ", req.body.phoneNumber);
-
   db.query(sql, [req.body.phoneNumber], (err, results) => {
     if (err) {
       console.error('Error executing query', err);
@@ -254,7 +272,6 @@ app.post('/getNumber', (req, res) => {
     }
   });
   // Temporary response for testing without database interaction
-  res.json({ success: true, message: 'Phone number received successfully' });
 });
 
 

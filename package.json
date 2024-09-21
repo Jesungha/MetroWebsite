@@ -12,7 +12,7 @@
   },
   "scripts": {
     "start-server": "node ./backend/server.js",
-    "start-client": "npm --prefix ./my-react-app start",
+    "start-client": "npm --prefix ./frontend start",
     "start": "concurrently \"npm run start-server\" \"npm run start-client\""
   },
   "devDependencies": {
